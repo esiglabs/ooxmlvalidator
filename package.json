@@ -41,7 +41,7 @@
   "dependencies": {
     "jszip": "^3.1.5",
     "node-webcrypto-ossl": "^1.0.32",
-    "pkijs": "^2.1.11",
+    "pkijs": "^2.1.12",
     "xadesjs": "^2.0.11",
     "xml-core": "^1.0.12",
     "xmldsigjs": "^2.0.18"
