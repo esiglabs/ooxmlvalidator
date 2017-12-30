@@ -6,6 +6,7 @@
  */
 import * as pkijs from 'pkijs';
 import * as asn1js from 'asn1js';
+import * as xmlcore from 'xml-core';
 import * as xmldsigjs from 'xmldsigjs';
 import * as xadesjs from 'xadesjs';
 import * as pvutils from 'pvutils';
@@ -45,9 +46,31 @@ import './webcrypto';
 /**
  * XML transformation specification.
  * @typedef {Object} Transformation
- * @typedef {string} name - The type of the transformation
+ * @property {string} name - The type of the transformation
  * (relationshiptransform or c14n).
- * @typedef {Object} data - Associated data based on the transformation.
+ * @property {Object} data - Associated data based on the transformation.
+ */
+
+/**
+ * Default content type for a specific extension.
+ * @typedef {Object} Default
+ * @property {string} extension - The extension of the file.
+ * @property {string} contentType - The content type.
+ */
+
+/**
+ * Content type override for a specific file.
+ * @typedef {Object} Override
+ * @property {string} part - The name of the file.
+ * @property {string} contentType - The content type.
+ */
+
+/**
+ * Content types contained in the OOXML file.
+ * @typedef {Object} ContentTypes
+ * @property {Array<Default>} defaults - The default content types based on the
+ * extension of the file.
+ * @propert {Array<Override>} overrides - Overrides for specific files.
  */
 
 /**
@@ -144,6 +167,78 @@ function extractTimestamp(signedXml) {
     contentInfo,
     certificates
   };
+}
+
+/**
+ * Load and parse content types.
+ * @param {JSZip} zip - The OOXML file.
+ * @return {Promise<ContentTypes>} A promise that is resolved with an object
+ * containing all the necessary content type information.
+ */
+function loadContentTypes(zip) {
+  return Promise.resolve().then(() => {
+    return zip.file('[Content_Types].xml').async('string');
+  }).then(cont => {
+    const xmlDoc = xmlcore.Parse(cont);
+    const types = xmlDoc.getElementsByTagName('Types');
+
+    if(types.length !== 1)
+      return undefined;
+
+    const defaults = [];
+    const overrides = [];
+
+    const defaultEls = Array.prototype.slice.call(
+      types[0].getElementsByTagName('Default'));
+    defaultEls.forEach(el => {
+      defaults.push({
+        extension: el.getAttribute('Extension'),
+        contentType: el.getAttribute('ContentType')
+      });
+    });
+
+    const overrideEls = Array.prototype.slice.call(
+      types[0].getElementsByTagName('Override'));
+    overrideEls.forEach(el => {
+      overrides.push({
+        part: el.getAttribute('PartName'),
+        contentType: el.getAttribute('ContentType')
+      });
+    });
+
+    return {
+      defaults,
+      overrides
+    }
+  });
+}
+
+/**
+ * Find the content type of a file.
+ * @param {string} filename - The filename.
+ * @param {ContentTypes} contentTypes - The OOXML content types as a
+ * ContentTypes object.
+ * @return {string} The filename's content type.
+ */
+function getContentType(filename, contentTypes) {
+  let contentType;
+
+  contentTypes.overrides.forEach(override => {
+    if(override.part === filename)
+      contentType = override.contentType;
+  });
+
+  if(typeof contentType !== 'undefined')
+    return contentType;
+
+  const extension = filename.split('.').pop();
+
+  contentTypes.defaults.forEach(def => {
+    if(def.extension === extension)
+      contentType = def.contentType;
+  });
+
+  return contentType;
 }
 
 /**
@@ -258,9 +353,11 @@ function validateFile(zip, filename, hashAlgo, hash, transforms) {
 function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
   const sigInfo = new SignatureInfo(num);
   let sequence = Promise.resolve();
-  let xmlDoc, signedXml, tsToken;
+  let xmlDoc, signedXml, tsToken, contentTypes;
 
-  sequence = sequence.then(() => {
+  sequence = sequence.then(() => loadContentTypes(zip)).then(result => {
+    contentTypes = result;
+  }).then(() => {
     return zip.file(`_xmlsignatures/sig${num}.xml`).async('string');
   }).then(cont => {
     xmlDoc = xadesjs.Parse(cont, 'application/xml');
@@ -293,11 +390,37 @@ function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
     const refs = Array.prototype.slice.call(
       packageObject.getElementsByTagName('Reference'));
     const checkList = [];
+    let err = false;
     refs.forEach(ref => {
+      if(err === true)
+        return;
       let uri = ref.getAttribute('URI');
       const n = uri.indexOf('?');
-      if(n !== -1)
+      let contentType;
+
+      if(n !== -1) {
+        const params = uri.substring(n + 1);
         uri = uri.substring(0, n);
+        params.split('&').forEach(param => {
+          const n2 = param.indexOf('=');
+          const key = param.substring(0, n2);
+          if(key === 'ContentType')
+            contentType = param.substring(n2 + 1);
+        });
+      } else {
+        err = true;
+        return;
+      }
+
+      if(typeof contentType === 'undefined') {
+        err = true;
+        return;
+      }
+
+      if(getContentType(uri, contentTypes) !== contentType) {
+        err = true;
+        return;
+      }
 
       const algorithm = xmldsigjs.CryptoConfig.CreateHashAlgorithm(ref
         .getElementsByTagName('DigestMethod')[0].getAttribute('Algorithm'))
@@ -343,7 +466,7 @@ function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
               name: 'c14n'
             });
           } else {
-            return [ false ];
+            err = true;
           }
         }
       });
@@ -355,6 +478,8 @@ function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
         transforms
       });
     });
+    if(err === true)
+      return [ false ];
 
     return Promise.all(checkList.map(entry =>
       validateFile(zip, entry.uri, entry.algorithm, entry.hash,
@@ -405,7 +530,6 @@ function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
       sigInfo.tsCert = result.signerCertificate;
     }
   }).catch(e => {
-    console.log(e);
     if(tsToken !== null) {
       sigInfo.tsVerified = false;
       sigInfo.tsCert = e.signerCertificate;
