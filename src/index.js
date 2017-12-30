@@ -11,23 +11,8 @@ import * as xmldsigjs from 'xmldsigjs';
 import * as xadesjs from 'xadesjs';
 import * as pvutils from 'pvutils';
 import * as jszip from 'jszip';
+import * as eslutils from 'eslutils';
 import './webcrypto';
-
-/**
-  * A trust store.
-  * @typedef {Object} TrustStore
-  * @property {string} name - The name of the trust store.
-  * @property {Array<pkijs.Certificate>} certificates - All the certificates
-  * contained in the trust store.
-  */
-
-/**
- * Trust store verification status.
- * @typedef {Object} TrustStoreStatus
- * @property {string} name - The name of the trust store.
- * @property {boolean} status - True if the certificate chains to this trust
- * store, false otherwise.
- */
 
 /**
  * Timestamp token and associated certificates.
@@ -72,35 +57,6 @@ import './webcrypto';
  * extension of the file.
  * @property {Array<Override>} overrides - Overrides for specific files.
  */
-
-/**
- * Verify if a certificate chains to some trusted CAs.
- * @param {pkijs.Certificate} certificate - The certificate that will be
- * checked.
- * @param {Array<pkijs.Certificate>} chain - Additional certificates in the
- * chain.
- * @param {Array<pkijs.Certificate>} trustedCAs - The trusted CAs
- * @return {Promise<boolean>} A promise that is resolved with a boolean value
- * stating if the certificate was verified or not.
- */
-function verifyChain(certificate, chain, trustedCAs) {
-  if(certificate === null)
-    return Promise.resolve(false);
-
-  return Promise.resolve().then(() => {
-    const certificateChainEngine = new pkijs.CertificateChainValidationEngine({
-      certs: chain,
-      trustedCerts: trustedCAs.filter(cert => typeof cert !== 'undefined')
-    });
-    certificateChainEngine.certs.push(certificate);
-
-    return certificateChainEngine.verify();
-  }).then(result => {
-    return result.result;
-  }, result => {
-    return false;
-  });
-}
 
 /**
  * Extract the timestamp from a signature.
@@ -343,14 +299,14 @@ function validateFile(zip, filename, hashAlgo, hash, transforms) {
  * Validate a single signature.
  * @param {JSZip} zip - The OOXML file.
  * @param {integer} num - The number of the signature.
- * @param {Array<TrustStore>} trustedSigningCAs - Trusted document signing CAs.
- * @param {Array<TrustStore>} trustedTimestampingCAs - Trusted document
+ * @param {eslutils.TrustStoreList} trustedSigningCAs - Trusted document signing CAs.
+ * @param {eslutils.TrustStoreList} trustedTimestampingCAs - Trusted document
  * timestamping CAs.
- * @return {Promise<SignatureInfo>} A promise that is resolved with a
+ * @return {Promise<eslutils.SignatureInfo>} A promise that is resolved with a
  * SignatureInfo object containing information about the signature.
  */
 function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
-  const sigInfo = new SignatureInfo(num);
+  const sigInfo = new eslutils.SignatureInfo(num);
   let sequence = Promise.resolve();
   let xmlDoc, signedXml, tsToken, contentTypes;
 
@@ -488,7 +444,7 @@ function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
   });
 
   trustedSigningCAs.forEach(truststore => {
-    sequence = sequence.then(() => verifyChain(sigInfo.cert, [],
+    sequence = sequence.then(() => eslutils.verifyChain(sigInfo.cert, [],
       truststore.certificates)).then(result => {
       sigInfo.signerVerified.push({
         name: truststore.name,
@@ -538,7 +494,7 @@ function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
   trustedTimestampingCAs.forEach(truststore => {
     sequence = sequence.then(() => {
       if(tsToken !== null)
-        return verifyChain(sigInfo.tsCert, [], truststore.certificates);
+        return eslutils.verifyChain(sigInfo.tsCert, [], truststore.certificates);
     }).then(result => {
       if(tsToken !== null) {
         sigInfo.tsCertVerified.push({
@@ -553,194 +509,6 @@ function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
 }
 
 /**
- * Object validation information.
- */
-export class ValidationInfo {
-  /**
-   * Generate an empty ValidationInfo object.
-   * @constructor
-   */
-  constructor() {
-    /**
-     * @type {boolean}
-     * @description A valid file.
-     */
-    this.isValid = false;
-    /**
-     * @type {boolean}
-     * @description A signed file.
-     */
-    this.isSigned = false;
-    /**
-     * @type {Array<SignatureInfo>}
-     * @description Validation information for all signatures.
-     */
-    this.signatures = [];
-  }
-
-  /**
-   * Check if all signatures have been verified.
-   */
-  get sigVerified() {
-    let verified = true;
-
-    this.signatures.forEach(sigInfo => {
-      verified &= sigInfo.sigVerified;
-    });
-
-    return verified;
-  }
-
-  /**
-   * Check if all hashes correspond to the signed data.
-   */
-  get hashVerified() {
-    let verified = true;
-
-    this.signatures.forEach(sigInfo => {
-      verified &= sigInfo.hashVerified;
-    });
-
-    return verified;
-  }
-
-  /**
-   * Check if all signers have been verified against a truststore.
-   * @param {string} signingTruststore - The name of the signing truststore.
-   * @param {string} timestampingTruststore - The name of the timestamping
-   * truststore.
-   * @return {boolean} True if the file was verified against both truststores,
-   * false otherwise.
-   */
-  isSignersVerified(signingTruststore, timestampingTruststore) {
-    let verified = true;
-
-    this.signatures.forEach(sigInfo => {
-      verified &= sigInfo.isSignersVerified(signingTruststore,
-        timestampingTruststore);
-    });
-
-    return verified;
-  }
-}
-
-/**
- * Single signature validation information.
- */
-export class SignatureInfo {
-  /**
-   * Generate an empty SignatureInfo object.
-   * @param {Object} id - The signature's identifier.
-   * @constructor
-   */
-  constructor(id) {
-    /**
-     * @type {Object}
-     * @description An identifier for the signature.
-     */
-    this.id = id;
-    /**
-     * @type {boolean}
-     * @description Signed hash has been verified.
-     */
-    this.sigVerified = false;
-    /**
-     * @type {boolean}
-     * @description The hash corresponds to the signed data.
-     */
-    this.hashVerified = false;
-    /**
-     * @type {string}
-     * @description The algorithm that was used to hash the data.
-     */
-    this.hashAlgorithm = '';
-    /**
-     * @type {Array<TrustStoreStatus>}
-     * @description Signer certificate chains to a trusted signing CA.
-     */
-    this.signerVerified = [];
-    /**
-     * @type {boolean}
-     * @description A timestamped OOXML file.
-     */
-    this.hasTS = false;
-    /**
-     * @type {boolean}
-     * @description The timestamp has been verified.
-     */
-    this.tsVerified = false;
-    /**
-     * @type {Array<TrustStoreStatus>}
-     * @description The certificate of the timestamp chains to a trusted
-     * timestamping CA.
-     */
-    this.tsCertVerified = [];
-    /**
-     * @type {pkijs.Certificate}
-     * @description The signer's certificate.
-     */
-    this.cert = null;
-    /**
-     * @type {pkijs.Certificate}
-     * @description The timestamp authority's certificate.
-     */
-    this.tsCert = null;
-  }
-
-  /**
-   * Check if the file verified was a valid signed OOXML whose signature and
-   * signed hash have been verified.
-   */
-  get isValidSigned() {
-    return this.isValid & this.isSigned & this.sigVerified & this.hashVerified;
-  }
-
-  /**
-   * Check if the file verified was a valid signed and timestamped OOXML whose
-   * signature, signed hash and timestamp have been verified.
-   */
-  get isValidSignedTimestamped() {
-    return this.isValid & this.isSigned & this.sigVerified &
-      this.hashVerified & this.hasTS & this.tsVerified;
-  }
-
-  /**
-   * Check if the signer has been verified against a truststore. If the file is
-   * timestamped, then the timestamp signer will also be checked against another
-   * truststore.
-   * @param {string} signingTruststore - The name of the signing truststore.
-   * @param {string} timestampingTruststore - The name of the timestamping
-   * truststore.
-   * @return {boolean} True if the file was verified against both truststores,
-   * false otherwise.
-   */
-  isSignersVerified(signingTruststore, timestampingTruststore) {
-    if(!this.isValid || !this.isSigned)
-      return false;
-
-    let verified = false;
-    this.signerVerified.forEach(signer => {
-      if(signer.name === signingTruststore)
-        verified = signer.status;
-    });
-    if(verified === false)
-      return false;
-
-    if(this.hasTS) {
-      verified = false;
-      this.tsCertVerified.forEach(signer => {
-        if(signer.name === timestampingTruststore)
-          verified = signer.status;
-      });
-      if(verified === false)
-        return false;
-    }
-
-    return true;
-  }
-};
-
-/**
  * OOXML Validator class
  */
 export class OOXMLValidator {
@@ -750,20 +518,20 @@ export class OOXMLValidator {
    */
   constructor(buffer) {
     /**
-     * @type {Array<TrustStore>}
+     * @type {eslutils.TrustStoreList}
      * @description Trusted document signing CAs.
      */
-    this.trustedSigningCAs = [];
+    this.trustedSigningCAs = new eslutils.TrustStoreList();
     /**
-     * @type {Array<TrustStore>}
+     * @type {eslutils.TrustStoreList}
      * @description Trusted document timestamping CAs.
      */
-    this.trustedTimestampingCAs = [];
+    this.trustedTimestampingCAs = new eslutils.TrustStoreList();
     /**
-     * @type {ValidationInfo}
+     * @type {eslutils.ValidationInfo}
      * @description A ValidationInfo object holding the validation results.
      */
-    this.ooxmlInfo = new ValidationInfo();
+    this.ooxmlInfo = new eslutils.ValidationInfo();
     /**
      * @type {ArrayBuffer}
      * @description The contents of the OOXML file.
@@ -781,7 +549,7 @@ export class OOXMLValidator {
    * @param {TrustStore} truststore - The trust store to add.
    */
   addSigningTruststore(truststore) {
-    this.trustedSigningCAs.push(truststore);
+    this.trustedSigningCAs.addTrustStore(truststore);
   }
 
   /**
@@ -789,14 +557,7 @@ export class OOXMLValidator {
    * @param {string} name - The name of the trust store to remove.
    */
   removeSigningTruststore(name) {
-    let idx;
-
-    for(idx = 0; idx < this.trustedSigningCAs.length; idx++) {
-      if(this.trustedSigningCAs[idx].name === name) {
-        this.trustedSigningCAs.splice(idx, 1);
-        idx--;
-      }
-    }
+    this.trustedSigningCAs.removeTrustStore(name);
   }
 
   /**
@@ -804,7 +565,7 @@ export class OOXMLValidator {
    * @param {TrustStore} truststore - The trust store to add.
    */
   addTimestampingTruststore(truststore) {
-    this.trustedTimestampingCAs.push(truststore);
+    this.trustedTimestampingCAs.addTrustStore(truststore);
   }
 
   /**
@@ -812,19 +573,12 @@ export class OOXMLValidator {
    * @param {string} name - The name of the trust store to remove.
    */
   removeTimestampingTruststore(name) {
-    let idx;
-
-    for(idx = 0; idx < this.trustedTimestampingCAs.length; idx++) {
-      if(this.trustedTimestampingCAs[idx].name === name) {
-        this.trustedTimestampingCAs.splice(idx, 1);
-        idx--;
-      }
-    }
+    this.trustedTimestampingCAs.removeTrustStore(name);
   }
 
   /**
    * Validate the OOXML file.
-   * @return {Promise<ValidationInfo>} A promise that is resolved with an
+   * @return {Promise<eslutils.ValidationInfo>} A promise that is resolved with an
    * ValidationInfo object containing the validation results.
    */
   validate() {
