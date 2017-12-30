@@ -267,7 +267,7 @@ function validateFile(zip, filename, hashAlgo, hash, transforms) {
     if(transforms.length === 0)
       return crypto.digest(hashAlgo, cont);
 
-    const xmlDoc = xadesjs.Parse(cont, 'application/xml');
+    const xmlDoc = xmlcore.Parse(cont, 'application/xml');
     let doc;
 
     transforms.forEach(trans => {

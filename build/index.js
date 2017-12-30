@@ -104,7 +104,7 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
  * @typedef {Object} ContentTypes
  * @property {Array<Default>} defaults - The default content types based on the
  * extension of the file.
- * @propert {Array<Override>} overrides - Overrides for specific files.
+ * @property {Array<Override>} overrides - Overrides for specific files.
  */
 
 /**
@@ -262,7 +262,6 @@ function getContentType(filename, contentTypes) {
 
 /**
  * Validate the hash of a file.
- * TODO: Also validate content types based on https://www.ecma-international.org/activities/Office%20Open%20XML%20Formats/Draft%20ECMA-376%203rd%20edition,%20March%202011/Office%20Open%20XML%20Part%202%20-%20Open%20Packaging%20Conventions.pdf.
  * @param {JSZip} zip - The OOXML file.
  * @param {string} filename - The filename.
  * @param {HashAlgorithm} hashAlgo - The hash algorithm.
@@ -282,7 +281,7 @@ function validateFile(zip, filename, hashAlgo, hash, transforms) {
 
     if (transforms.length === 0) return crypto.digest(hashAlgo, cont);
 
-    var xmlDoc = xadesjs.Parse(cont, 'application/xml');
+    var xmlDoc = xmlcore.Parse(cont, 'application/xml');
     var doc = void 0;
 
     transforms.forEach(function (trans) {
