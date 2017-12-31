@@ -299,7 +299,8 @@ function validateFile(zip, filename, hashAlgo, hash, transforms) {
  * Validate a single signature.
  * @param {JSZip} zip - The OOXML file.
  * @param {integer} num - The number of the signature.
- * @param {eslutils.TrustStoreList} trustedSigningCAs - Trusted document signing CAs.
+ * @param {eslutils.TrustStoreList} trustedSigningCAs - Trusted document
+ * signing CAs.
  * @param {eslutils.TrustStoreList} trustedTimestampingCAs - Trusted document
  * timestamping CAs.
  * @return {Promise<eslutils.SignatureInfo>} A promise that is resolved with a
@@ -494,7 +495,8 @@ function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
   trustedTimestampingCAs.forEach(truststore => {
     sequence = sequence.then(() => {
       if(tsToken !== null)
-        return eslutils.verifyChain(sigInfo.tsCert, [], truststore.certificates);
+        return eslutils.verifyChain(sigInfo.tsCert, [],
+          truststore.certificates);
     }).then(result => {
       if(tsToken !== null) {
         sigInfo.tsCertVerified.push({
@@ -578,8 +580,8 @@ export class OOXMLValidator {
 
   /**
    * Validate the OOXML file.
-   * @return {Promise<eslutils.ValidationInfo>} A promise that is resolved with an
-   * ValidationInfo object containing the validation results.
+   * @return {Promise<eslutils.ValidationInfo>} A promise that is resolved with
+   * a ValidationInfo object containing the validation results.
    */
   validate() {
     let sequence = Promise.resolve();
