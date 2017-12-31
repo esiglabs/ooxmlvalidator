@@ -531,7 +531,7 @@ export class OOXMLValidator {
      * @type {eslutils.ValidationInfo}
      * @description A ValidationInfo object holding the validation results.
      */
-    this.ooxmlInfo = new eslutils.ValidationInfo();
+    this.validationInfo = new eslutils.ValidationInfo();
     /**
      * @type {ArrayBuffer}
      * @description The contents of the OOXML file.
@@ -587,7 +587,7 @@ export class OOXMLValidator {
     sequence = sequence.then(() => jszip.loadAsync(this.fileContents))
       .then(zip => {
         this.zip = zip;
-        this.ooxmlInfo.isValid = true;
+        this.validationInfo.isValid = true;
 
         const sigs = Object.keys(zip.files).filter(name =>
           name.match(/_xmlsignatures\/sig[0-9]+.xml/)).map(name =>
@@ -595,16 +595,16 @@ export class OOXMLValidator {
         if(sigs.length === 0)
           throw new Error('Unsigned OOXML file');
 
-        this.ooxmlInfo.isSigned = true;
+        this.validationInfo.isSigned = true;
 
         return Promise.all(sigs.map(num => validateSig(zip, num,
           this.trustedSigningCAs, this.trustedTimestampingCAs)));
       }, e => {
         throw new Error('Invalid OOXML file');
       }).then(res => {
-        this.ooxmlInfo.signatures = res.slice();
+        this.validationInfo.signatures = res.slice();
       }).catch(() => {});
 
-    return sequence.then(() => this.ooxmlInfo);
+    return sequence.then(() => this.validationInfo);
   }
 }

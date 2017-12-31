@@ -26,6 +26,8 @@ You can use the module as follows:
     docx.addTimestampingTruststore(loadTrustStoreFromJSON('timestamp.json'));
     docx.validate().then(result => console.log(result));
 
+After validation you can also access the `validationInfo` field of the validator to get the validation results. Please note that validation does not finish after the `validate()` call since it returns a `Promise`, so it's better to use `Promise` chaining or `await` in async functions.
+
 # License
 
 Copyright (c) 2017, Fotis Loukos

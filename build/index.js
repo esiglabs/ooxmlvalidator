@@ -534,7 +534,7 @@ var OOXMLValidator = exports.OOXMLValidator = function () {
      * @type {eslutils.ValidationInfo}
      * @description A ValidationInfo object holding the validation results.
      */
-    this.ooxmlInfo = new eslutils.ValidationInfo();
+    this.validationInfo = new eslutils.ValidationInfo();
     /**
      * @type {ArrayBuffer}
      * @description The contents of the OOXML file.
@@ -609,7 +609,7 @@ var OOXMLValidator = exports.OOXMLValidator = function () {
         return jszip.loadAsync(_this.fileContents);
       }).then(function (zip) {
         _this.zip = zip;
-        _this.ooxmlInfo.isValid = true;
+        _this.validationInfo.isValid = true;
 
         var sigs = Object.keys(zip.files).filter(function (name) {
           return name.match(/_xmlsignatures\/sig[0-9]+.xml/);
@@ -618,7 +618,7 @@ var OOXMLValidator = exports.OOXMLValidator = function () {
         });
         if (sigs.length === 0) throw new Error('Unsigned OOXML file');
 
-        _this.ooxmlInfo.isSigned = true;
+        _this.validationInfo.isSigned = true;
 
         return Promise.all(sigs.map(function (num) {
           return validateSig(zip, num, _this.trustedSigningCAs, _this.trustedTimestampingCAs);
@@ -626,11 +626,11 @@ var OOXMLValidator = exports.OOXMLValidator = function () {
       }, function (e) {
         throw new Error('Invalid OOXML file');
       }).then(function (res) {
-        _this.ooxmlInfo.signatures = res.slice();
+        _this.validationInfo.signatures = res.slice();
       }).catch(function () {});
 
       return sequence.then(function () {
-        return _this.ooxmlInfo;
+        return _this.validationInfo;
       });
     }
   }]);
