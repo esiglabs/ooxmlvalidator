@@ -1,6 +1,6 @@
 {
   "name": "ooxmlvalidator",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "A signed OOXML (docx, xlsx, pptx, etc) validator",
   "main": "build/index.js",
   "module": "src/index.js",
@@ -45,7 +45,7 @@
     "./build/webcrypto.js": false
   },
   "dependencies": {
-    "eslutils": "git+ssh://git@github.com/fotisl/eslutils.git",
+    "eslutils": "fotisl/eslutils",
     "jszip": "^3.1.5",
     "node-webcrypto-ossl": "^1.0.32",
     "pkijs": "^2.1.12",
