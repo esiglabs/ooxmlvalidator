@@ -45,7 +45,7 @@
     "./build/webcrypto.js": false
   },
   "dependencies": {
-    "eslutils": "esiglabs/eslutils",
+    "eslutils": "0.1.0",
     "jszip": "^3.1.5",
     "node-webcrypto-ossl": "^1.0.32",
     "pkijs": "^2.1.12",
