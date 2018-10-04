@@ -345,6 +345,23 @@ function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
   }).then(function (res) {
     sigInfo.sigVerified = res;
 
+    try {
+      var unsignedSigProps = signedXml.UnsignedProperties.UnsignedSignatureProperties;
+      unsignedSigProps.items.forEach(function (item) {
+        if (item.localName !== 'CertificateValues') return;
+
+        sigInfo.certBundle = [];
+        if ('EncapsulatedX509Certificates' in item) {
+          item.EncapsulatedX509Certificates.items.forEach(function (rawCert) {
+            var asn1 = asn1js.fromBER(rawCert.Value.buffer);
+            sigInfo.certBundle.push(new pkijs.Certificate({ schema: asn1.result }));
+          });
+        }
+      });
+    } catch (ex) {
+      // If there are no certs, ignore it.
+    }
+
     var packageObject = void 0;
     Array.prototype.slice.call(xmlDoc.getElementsByTagName('Object')).forEach(function (obj) {
       if (obj.getAttribute('Id') === 'idPackageObject') packageObject = obj;
@@ -457,6 +474,7 @@ function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
     tsToken = extractTimestamp(signedXml);
     if (tsToken !== null) {
       sigInfo.hasTS = true;
+      sigInfo.tsCertBundle = tsToken.certificates.slice();
 
       var tsSigned = new pkijs.SignedData({
         schema: tsToken.contentInfo.content
@@ -493,7 +511,7 @@ function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
 
   trustedTimestampingCAs.forEach(function (truststore) {
     sequence = sequence.then(function () {
-      if (tsToken !== null) return eslutils.verifyChain(sigInfo.tsCert, [], truststore.certificates);
+      if (tsToken !== null) return eslutils.verifyChain(sigInfo.tsCert, tsToken.certificates, truststore.certificates);
     }).then(function (result) {
       if (tsToken !== null) {
         sigInfo.tsCertVerified.push({

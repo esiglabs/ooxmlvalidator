@@ -45,7 +45,7 @@
     "./build/webcrypto.js": false
   },
   "dependencies": {
-    "eslutils": "git+ssh://git@github.com/fotisl/eslutils.git",
+    "eslutils": "^1.1.1",
     "jszip": "^3.1.5",
     "node-webcrypto-ossl": "^1.0.32",
     "pkijs": "^2.1.12",
