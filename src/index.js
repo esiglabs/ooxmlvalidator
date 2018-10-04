@@ -67,7 +67,7 @@ import './webcrypto';
 function extractTimestamp(signedXml) {
   if(!('UnsignedProperties' in signedXml) ||
     !('UnsignedSignatureProperties' in signedXml.UnsignedProperties))
-    return null
+    return null;
 
   let sigTimeStamp;
   signedXml.UnsignedProperties.UnsignedSignatureProperties.items
@@ -333,6 +333,24 @@ function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
   }).then(res => {
     sigInfo.sigVerified = res;
 
+    try {
+      const unsignedSigProps = signedXml.UnsignedProperties.UnsignedSignatureProperties;
+      unsignedSigProps.items.forEach(item => {
+        if(item.localName !== 'CertificateValues')
+          return;
+
+        sigInfo.certBundle = [];
+        if('EncapsulatedX509Certificates' in item) {
+          item.EncapsulatedX509Certificates.items.forEach(rawCert => {
+            const asn1 = asn1js.fromBER(rawCert.Value.buffer);
+            sigInfo.certBundle.push(new pkijs.Certificate({ schema: asn1.result }));
+          });
+        }
+      });
+    } catch(ex) {
+      // If there are no certs, ignore it.
+    }
+
     let packageObject;
     Array.prototype.slice.call(xmlDoc.getElementsByTagName('Object'))
       .forEach(obj => {
@@ -458,6 +476,7 @@ function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
     tsToken = extractTimestamp(signedXml);
     if(tsToken !== null) {
       sigInfo.hasTS = true;
+      sigInfo.tsCertBundle = tsToken.certificates.slice();
 
       const tsSigned = new pkijs.SignedData({
         schema: tsToken.contentInfo.content
@@ -495,7 +514,7 @@ function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
   trustedTimestampingCAs.forEach(truststore => {
     sequence = sequence.then(() => {
       if(tsToken !== null)
-        return eslutils.verifyChain(sigInfo.tsCert, [],
+        return eslutils.verifyChain(sigInfo.tsCert, tsToken.certificates,
           truststore.certificates);
     }).then(result => {
       if(tsToken !== null) {
