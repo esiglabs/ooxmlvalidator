@@ -15,39 +15,21 @@ var _createClass = function () { function defineProperties(target, props) { for 
 
 var _pkijs = require('pkijs');
 
-var pkijs = _interopRequireWildcard(_pkijs);
-
 var _asn1js = require('asn1js');
-
-var asn1js = _interopRequireWildcard(_asn1js);
 
 var _xmlCore = require('xml-core');
 
-var xmlcore = _interopRequireWildcard(_xmlCore);
-
 var _xmldsigjs = require('xmldsigjs');
-
-var xmldsigjs = _interopRequireWildcard(_xmldsigjs);
 
 var _xadesjs = require('xadesjs');
 
-var xadesjs = _interopRequireWildcard(_xadesjs);
-
 var _pvutils = require('pvutils');
-
-var pvutils = _interopRequireWildcard(_pvutils);
 
 var _jszip = require('jszip');
 
-var jszip = _interopRequireWildcard(_jszip);
-
 var _eslutils = require('eslutils');
 
-var eslutils = _interopRequireWildcard(_eslutils);
-
 require('./webcrypto');
-
-function _interopRequireWildcard(obj) { if (obj && obj.__esModule) { return obj; } else { var newObj = {}; if (obj != null) { for (var key in obj) { if (Object.prototype.hasOwnProperty.call(obj, key)) newObj[key] = obj[key]; } } newObj.default = obj; return newObj; } }
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
@@ -120,11 +102,11 @@ function extractTimestamp(signedXml) {
 
   if (typeof encTimeStamp === 'undefined') return null;
 
-  var asn1 = asn1js.fromBER(encTimeStamp.Value.buffer);
+  var asn1 = (0, _asn1js.fromBER)(encTimeStamp.Value.buffer);
 
   var contentInfo = void 0;
   try {
-    contentInfo = new pkijs.ContentInfo({ schema: asn1.result });
+    contentInfo = new _pkijs.ContentInfo({ schema: asn1.result });
   } catch (ex) {
     return null;
   }
@@ -140,9 +122,9 @@ function extractTimestamp(signedXml) {
   var certificates = [];
   for (var i = 0; i < certEls.length; i++) {
     var pem = certEls[i].textContent;
-    var certDer = pvutils.stringToArrayBuffer(pvutils.fromBase64(pem));
-    var _asn = asn1js.fromBER(certDer);
-    var cert = new pkijs.Certificate({ schema: _asn.result });
+    var certDer = (0, _pvutils.stringToArrayBuffer)((0, _pvutils.fromBase64)(pem));
+    var _asn = (0, _asn1js.fromBER)(certDer);
+    var cert = new _pkijs.Certificate({ schema: _asn.result });
     certificates.push(cert);
   }
 
@@ -162,7 +144,7 @@ function loadContentTypes(zip) {
   return Promise.resolve().then(function () {
     return zip.file('[Content_Types].xml').async('string');
   }).then(function (cont) {
-    var xmlDoc = xmlcore.Parse(cont);
+    var xmlDoc = (0, _xmlCore.Parse)(cont);
     var types = xmlDoc.getElementsByTagName('Types');
 
     if (types.length !== 1) return undefined;
@@ -235,11 +217,11 @@ function validateFile(zip, filename, hashAlgo, hash, transforms) {
 
     if (transforms.length === 0) return zip.file(filename).async('uint8array');else return zip.file(filename).async('string');
   }).then(function (cont) {
-    var crypto = pkijs.getCrypto();
+    var crypto = (0, _pkijs.getCrypto)();
 
     if (transforms.length === 0) return crypto.digest(hashAlgo, cont);
 
-    var xmlDoc = xmlcore.Parse(cont, 'application/xml');
+    var xmlDoc = (0, _xmlCore.Parse)(cont, 'application/xml');
     var doc = void 0;
 
     transforms.forEach(function (trans) {
@@ -276,7 +258,7 @@ function validateFile(zip, filename, hashAlgo, hash, transforms) {
         });
       } else if (trans.name === 'c14n') {
         // We assume c14n is always the last transformation.
-        var transform = new xmldsigjs.XmlDsigC14NTransform();
+        var transform = new _xmldsigjs.XmlDsigC14NTransform();
         transform.LoadInnerXml(xmlDoc);
         doc = transform.GetOutput();
       }
@@ -316,7 +298,7 @@ function validateFile(zip, filename, hashAlgo, hash, transforms) {
  * SignatureInfo object containing information about the signature.
  */
 function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
-  var sigInfo = new eslutils.SignatureInfo(num);
+  var sigInfo = new _eslutils.SignatureInfo(num);
   var sequence = Promise.resolve();
   var xmlDoc = void 0,
       signedXml = void 0,
@@ -330,9 +312,9 @@ function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
   }).then(function () {
     return zip.file('_xmlsignatures/sig' + num + '.xml').async('string');
   }).then(function (cont) {
-    xmlDoc = xadesjs.Parse(cont, 'application/xml');
+    xmlDoc = (0, _xadesjs.Parse)(cont, 'application/xml');
     var xmlSig = xmlDoc.getElementsByTagNameNS('http://www.w3.org/2000/09/xmldsig#', 'Signature');
-    signedXml = new xadesjs.SignedXml(xmlDoc);
+    signedXml = new _xadesjs.SignedXml(xmlDoc);
     signedXml.LoadXml(xmlSig[0]);
 
     sigInfo.cert = signedXml.signature.KeyInfo.items[0].X509CertificateList[0].simpl;
@@ -353,8 +335,8 @@ function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
         sigInfo.certBundle = [];
         if ('EncapsulatedX509Certificates' in item) {
           item.EncapsulatedX509Certificates.items.forEach(function (rawCert) {
-            var asn1 = asn1js.fromBER(rawCert.Value.buffer);
-            sigInfo.certBundle.push(new pkijs.Certificate({ schema: asn1.result }));
+            var asn1 = (0, _asn1js.fromBER)(rawCert.Value.buffer);
+            sigInfo.certBundle.push(new _pkijs.Certificate({ schema: asn1.result }));
           });
         }
       });
@@ -401,13 +383,13 @@ function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
         return;
       }
 
-      var algorithm = xmldsigjs.CryptoConfig.CreateHashAlgorithm(ref.getElementsByTagName('DigestMethod')[0].getAttribute('Algorithm')).algorithm;
+      var algorithm = _xmldsigjs.CryptoConfig.CreateHashAlgorithm(ref.getElementsByTagName('DigestMethod')[0].getAttribute('Algorithm')).algorithm;
 
       // We assume the same algorithm is used for all files
       sigInfo.hashAlgorithm = algorithm.name;
 
       var b64Hash = ref.getElementsByTagName('DigestValue')[0].textContent;
-      var hash = pvutils.stringToArrayBuffer(pvutils.fromBase64(b64Hash));
+      var hash = (0, _pvutils.stringToArrayBuffer)((0, _pvutils.fromBase64)(b64Hash));
 
       var transforms = [];
       var transformEls = Array.prototype.slice.call(ref.getElementsByTagName('Transforms'));
@@ -461,7 +443,7 @@ function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
 
   trustedSigningCAs.forEach(function (truststore) {
     sequence = sequence.then(function () {
-      return eslutils.verifyChain(sigInfo.cert, [], truststore.certificates);
+      return (0, _eslutils.verifyChain)(sigInfo.cert, [], truststore.certificates);
     }).then(function (result) {
       sigInfo.signerVerified.push({
         name: truststore.name,
@@ -476,11 +458,11 @@ function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
       sigInfo.hasTS = true;
       sigInfo.tsCertBundle = tsToken.certificates.slice();
 
-      var tsSigned = new pkijs.SignedData({
+      var tsSigned = new _pkijs.SignedData({
         schema: tsToken.contentInfo.content
       });
 
-      var transform = new xmldsigjs.XmlDsigC14NTransform();
+      var transform = new _xmldsigjs.XmlDsigC14NTransform();
       transform.LoadInnerXml(signedXml.XmlSignature.GetChild('SignatureValue'));
       var sigValueCanon = transform.GetOutput();
       // According to https://www.w3.org/TR/REC-xml/#sec-line-ends, parsers
@@ -490,7 +472,7 @@ function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
 
       return tsSigned.verify({
         signer: 0,
-        data: pvutils.stringToArrayBuffer(sigValueCanon),
+        data: (0, _pvutils.stringToArrayBuffer)(sigValueCanon),
         checkChain: false,
         extendedMode: true
       });
@@ -511,7 +493,7 @@ function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
 
   trustedTimestampingCAs.forEach(function (truststore) {
     sequence = sequence.then(function () {
-      if (tsToken !== null) return eslutils.verifyChain(sigInfo.tsCert, tsToken.certificates, truststore.certificates);
+      if (tsToken !== null) return (0, _eslutils.verifyChain)(sigInfo.tsCert, tsToken.certificates, truststore.certificates);
     }).then(function (result) {
       if (tsToken !== null) {
         sigInfo.tsCertVerified.push({
@@ -543,17 +525,17 @@ var OOXMLValidator = exports.OOXMLValidator = function () {
      * @type {eslutils.TrustStoreList}
      * @description Trusted document signing CAs.
      */
-    this.trustedSigningCAs = new eslutils.TrustStoreList();
+    this.trustedSigningCAs = new _eslutils.TrustStoreList();
     /**
      * @type {eslutils.TrustStoreList}
      * @description Trusted document timestamping CAs.
      */
-    this.trustedTimestampingCAs = new eslutils.TrustStoreList();
+    this.trustedTimestampingCAs = new _eslutils.TrustStoreList();
     /**
      * @type {eslutils.ValidationInfo}
      * @description A ValidationInfo object holding the validation results.
      */
-    this.validationInfo = new eslutils.ValidationInfo();
+    this.validationInfo = new _eslutils.ValidationInfo();
     /**
      * @type {ArrayBuffer}
      * @description The contents of the OOXML file.
@@ -625,7 +607,7 @@ var OOXMLValidator = exports.OOXMLValidator = function () {
       var sequence = Promise.resolve();
 
       sequence = sequence.then(function () {
-        return jszip.loadAsync(_this.fileContents);
+        return (0, _jszip.loadAsync)(_this.fileContents);
       }).then(function (zip) {
         _this.zip = zip;
         _this.validationInfo.isValid = true;

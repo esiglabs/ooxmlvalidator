@@ -4,14 +4,14 @@
  * By Fotis Loukos <me@fotisl.com>
  * @module ooxmlvalidator
  */
-import * as pkijs from 'pkijs';
-import * as asn1js from 'asn1js';
-import * as xmlcore from 'xml-core';
-import * as xmldsigjs from 'xmldsigjs';
-import * as xadesjs from 'xadesjs';
-import * as pvutils from 'pvutils';
-import * as jszip from 'jszip';
-import * as eslutils from 'eslutils';
+import { Certificate, ContentInfo, SignedData, getCrypto } from 'pkijs';
+import { fromBER } from 'asn1js';
+import { Parse as XmlCoreParse } from 'xml-core';
+import { CryptoConfig, XmlDsigC14NTransform } from 'xmldsigjs';
+import { Parse as XadesjsParse, SignedXml } from 'xadesjs';
+import { fromBase64, stringToArrayBuffer } from 'pvutils';
+import { loadAsync } from 'jszip';
+import { SignatureInfo, TrustStoreList, ValidationInfo, verifyChain } from 'eslutils';
 import './webcrypto';
 
 /**
@@ -91,11 +91,11 @@ function extractTimestamp(signedXml) {
   if(typeof encTimeStamp === 'undefined')
     return null;
 
-  const asn1 = asn1js.fromBER(encTimeStamp.Value.buffer);
+  const asn1 = fromBER(encTimeStamp.Value.buffer);
 
   let contentInfo;
   try {
-    contentInfo = new pkijs.ContentInfo({ schema: asn1.result });
+    contentInfo = new ContentInfo({ schema: asn1.result });
   } catch(ex) {
     return null;
   }
@@ -113,9 +113,9 @@ function extractTimestamp(signedXml) {
   const certificates = [];
   for(let i = 0; i < certEls.length; i++) {
     const pem = certEls[i].textContent;
-    const certDer = pvutils.stringToArrayBuffer(pvutils.fromBase64(pem));
-    const asn1 = asn1js.fromBER(certDer);
-    const cert = new pkijs.Certificate({ schema: asn1.result });
+    const certDer = stringToArrayBuffer(fromBase64(pem));
+    const asn1 = fromBER(certDer);
+    const cert = new Certificate({ schema: asn1.result });
     certificates.push(cert);
   }
 
@@ -135,7 +135,7 @@ function loadContentTypes(zip) {
   return Promise.resolve().then(() => {
     return zip.file('[Content_Types].xml').async('string');
   }).then(cont => {
-    const xmlDoc = xmlcore.Parse(cont);
+    const xmlDoc = XmlCoreParse(cont);
     const types = xmlDoc.getElementsByTagName('Types');
 
     if(types.length !== 1)
@@ -218,12 +218,12 @@ function validateFile(zip, filename, hashAlgo, hash, transforms) {
     else
       return zip.file(filename).async('string');
   }).then(cont => {
-    const crypto = pkijs.getCrypto();
+    const crypto = getCrypto();
 
     if(transforms.length === 0)
       return crypto.digest(hashAlgo, cont);
 
-    const xmlDoc = xmlcore.Parse(cont, 'application/xml');
+    const xmlDoc = XmlCoreParse(cont, 'application/xml');
     let doc;
 
     transforms.forEach(trans => {
@@ -263,7 +263,7 @@ function validateFile(zip, filename, hashAlgo, hash, transforms) {
         finalRels.forEach(rel => relsEl.appendChild(rel));
       } else if(trans.name === 'c14n') {
         // We assume c14n is always the last transformation.
-        const transform = new xmldsigjs.XmlDsigC14NTransform();
+        const transform = new XmlDsigC14NTransform();
         transform.LoadInnerXml(xmlDoc);
         doc = transform.GetOutput();
       }
@@ -307,7 +307,7 @@ function validateFile(zip, filename, hashAlgo, hash, transforms) {
  * SignatureInfo object containing information about the signature.
  */
 function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
-  const sigInfo = new eslutils.SignatureInfo(num);
+  const sigInfo = new SignatureInfo(num);
   let sequence = Promise.resolve();
   let xmlDoc, signedXml, tsToken, contentTypes;
 
@@ -316,10 +316,10 @@ function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
   }).then(() => {
     return zip.file(`_xmlsignatures/sig${num}.xml`).async('string');
   }).then(cont => {
-    xmlDoc = xadesjs.Parse(cont, 'application/xml');
+    xmlDoc = XadesjsParse(cont, 'application/xml');
     const xmlSig = xmlDoc.getElementsByTagNameNS(
       'http://www.w3.org/2000/09/xmldsig#', 'Signature');
-    signedXml = new xadesjs.SignedXml(xmlDoc);
+    signedXml = new SignedXml(xmlDoc);
     signedXml.LoadXml(xmlSig[0]);
 
     sigInfo.cert = signedXml.signature.KeyInfo.items[0]
@@ -342,8 +342,8 @@ function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
         sigInfo.certBundle = [];
         if('EncapsulatedX509Certificates' in item) {
           item.EncapsulatedX509Certificates.items.forEach(rawCert => {
-            const asn1 = asn1js.fromBER(rawCert.Value.buffer);
-            sigInfo.certBundle.push(new pkijs.Certificate({ schema: asn1.result }));
+            const asn1 = fromBER(rawCert.Value.buffer);
+            sigInfo.certBundle.push(new Certificate({ schema: asn1.result }));
           });
         }
       });
@@ -396,7 +396,7 @@ function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
         return;
       }
 
-      const algorithm = xmldsigjs.CryptoConfig.CreateHashAlgorithm(ref
+      const algorithm = CryptoConfig.CreateHashAlgorithm(ref
         .getElementsByTagName('DigestMethod')[0].getAttribute('Algorithm'))
         .algorithm;
 
@@ -404,7 +404,7 @@ function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
       sigInfo.hashAlgorithm = algorithm.name;
 
       const b64Hash = ref.getElementsByTagName('DigestValue')[0].textContent;
-      const hash = pvutils.stringToArrayBuffer(pvutils.fromBase64(b64Hash));
+      const hash = stringToArrayBuffer(fromBase64(b64Hash));
 
       const transforms = [];
       const transformEls = Array.prototype.slice.call(
@@ -463,7 +463,7 @@ function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
   });
 
   trustedSigningCAs.forEach(truststore => {
-    sequence = sequence.then(() => eslutils.verifyChain(sigInfo.cert, [],
+    sequence = sequence.then(() => verifyChain(sigInfo.cert, [],
       truststore.certificates)).then(result => {
       sigInfo.signerVerified.push({
         name: truststore.name,
@@ -478,11 +478,11 @@ function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
       sigInfo.hasTS = true;
       sigInfo.tsCertBundle = tsToken.certificates.slice();
 
-      const tsSigned = new pkijs.SignedData({
+      const tsSigned = new SignedData({
         schema: tsToken.contentInfo.content
       });
 
-      const transform = new xmldsigjs.XmlDsigC14NTransform();
+      const transform = new XmlDsigC14NTransform();
       transform.LoadInnerXml(signedXml.XmlSignature.GetChild('SignatureValue'));
       let sigValueCanon = transform.GetOutput();
       // According to https://www.w3.org/TR/REC-xml/#sec-line-ends, parsers
@@ -492,7 +492,7 @@ function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
 
       return tsSigned.verify({
         signer: 0,
-        data: pvutils.stringToArrayBuffer(sigValueCanon),
+        data: stringToArrayBuffer(sigValueCanon),
         checkChain: false,
         extendedMode: true
       });
@@ -514,7 +514,7 @@ function validateSig(zip, num, trustedSigningCAs, trustedTimestampingCAs) {
   trustedTimestampingCAs.forEach(truststore => {
     sequence = sequence.then(() => {
       if(tsToken !== null)
-        return eslutils.verifyChain(sigInfo.tsCert, tsToken.certificates,
+        return verifyChain(sigInfo.tsCert, tsToken.certificates,
           truststore.certificates);
     }).then(result => {
       if(tsToken !== null) {
@@ -542,17 +542,17 @@ export class OOXMLValidator {
      * @type {eslutils.TrustStoreList}
      * @description Trusted document signing CAs.
      */
-    this.trustedSigningCAs = new eslutils.TrustStoreList();
+    this.trustedSigningCAs = new TrustStoreList();
     /**
      * @type {eslutils.TrustStoreList}
      * @description Trusted document timestamping CAs.
      */
-    this.trustedTimestampingCAs = new eslutils.TrustStoreList();
+    this.trustedTimestampingCAs = new TrustStoreList();
     /**
      * @type {eslutils.ValidationInfo}
      * @description A ValidationInfo object holding the validation results.
      */
-    this.validationInfo = new eslutils.ValidationInfo();
+    this.validationInfo = new ValidationInfo();
     /**
      * @type {ArrayBuffer}
      * @description The contents of the OOXML file.
@@ -605,7 +605,7 @@ export class OOXMLValidator {
   validate() {
     let sequence = Promise.resolve();
 
-    sequence = sequence.then(() => jszip.loadAsync(this.fileContents))
+    sequence = sequence.then(() => loadAsync(this.fileContents))
       .then(zip => {
         this.zip = zip;
         this.validationInfo.isValid = true;
